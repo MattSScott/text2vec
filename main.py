@@ -142,11 +142,11 @@ def load_dataset(db_loc):
     return list(np.load(db_loc).values())
 
 
-def gen_transform(sx, sy, tx, ty):
+def gen_transform(sx, sy, tx, ty):  # return a homography matrix
     return np.array([[sx, 0, 0], [0, sy, 0], [tx, ty, 1]])
 
 
-def apply_transform(paths, tform):
+def apply_transform(paths, tform):  # using a homography matrix, we change the entire co-ordinate set
     new_paths = []
     for path in paths:
         augmented = np.c_[path, np.ones(len(path))]
@@ -173,7 +173,7 @@ def process_string(str_in, writing_style, pt_size, resolution):
 
 if __name__ == '__main__':
     rez = 200  # keep global for string processing
-    db_loc = "datasets/database1"
-    gen_dataset(db_loc, resolution=rez)  # set resolution higher for cleaner edges at cost of speed
+    database_loc = "datasets/database1"
+    gen_dataset(database_loc, resolution=rez)  # set resolution higher for cleaner edges at cost of speed
     string_input = "mcm"
     process_string(string_input, writing_style=1, pt_size=5, resolution=rez)
