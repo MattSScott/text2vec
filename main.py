@@ -1,5 +1,6 @@
 import math
 import os
+import re
 
 from skimage.io import imread
 import matplotlib.pyplot as plt
@@ -9,35 +10,62 @@ from skimage.filters import threshold_otsu
 
 
 # we expect a list of images with name = letter to generate a dataset from
-def gen_dataset(dataset_location) -> []:
+def gen_dataset(dataset_location):
     dataset = os.fsencode(dataset_location)
     for file in os.listdir(dataset):
         filename = os.fsdecode(file)
         if filename.endswith(".png"):
+            letter = get_letter(filename)
             full_path = dataset_location + '/' + filename
             img = imread(full_path, as_gray=True)
             resized_img = resize(img, (50, 50))
             skeleton = get_skeleton(resized_img)
             vector_set = get_vector_set(skeleton)
             path_set = get_path_set(vector_set)
-            plt.figure()
-            plt.imshow(skeleton)
-            for path in path_set:
-                for pt in path:
-                    plt.plot(pt[0], pt[1], 'ro')
-            plt.show()
-            continue
-    return []
+            # show_path(path_set, skeleton)
+            write_vec_file(letter, path_set, dataset_location)
+
+
+def write_vec_file(letter, paths, location):
+    db_num = re.search('\d+$', location).group(0)
+    output_path = f"datasets/vectorised{db_num}/{letter}.txt"
+    file = open(output_path, "w")
+    for path in paths:
+        for pt in path:
+            for coord in pt:
+                file.write(str(coord) + " ")
+            file.write('\t\t')
+        file.write('\n')
+    file.close()
+
+
+def show_path(path_set, skeleton):
+    plt.figure()
+    plt.imshow(skeleton)
+    for path in path_set:  # illustrate path taken
+        for i in range(len(path) - 1):
+            pt1 = path[i]
+            pt2 = path[i + 1]
+            x = [pt1[0], pt2[0]]
+            y = [pt1[1], pt2[1]]
+            plt.plot(x, y, marker='')
+    plt.show()
+
+
+def get_letter(file):
+    f_copy = file
+    return f_copy.replace(".png", "")
 
 
 def get_skeleton(image):
     threshold = threshold_otsu(image)
-    binary_image = image > threshold
-    binary_image = 1 - binary_image
+    binary_image = image > threshold  # convert image to binary
+    binary_image = 1 - binary_image  # invert grayscale image for processing
     skeleton = skeletonize(binary_image)
     return skeleton
 
 
+# skeletonization returns a boolean mask - filter these points to extract the x-y coordinates
 def get_vector_set(skel):
     vec_set = []
     for y in range(len(skel)):
@@ -47,6 +75,7 @@ def get_vector_set(skel):
     return vec_set
 
 
+# find endpoint to start at (the point with 1 neighbour)
 def get_terminal_node(vec_set):
     neighbouring_pixel_dist = 2
     terminal_nodes = []
@@ -63,7 +92,7 @@ def get_terminal_node(vec_set):
         if num_neighbours == 1:
             terminal_nodes.append(vec)
 
-    if len(terminal_nodes) > 0:
+    if len(terminal_nodes) > 0:  # if there are multiple terminal nodes, pick the leftmost
         return min_x(terminal_nodes)
 
     return vec_set[0]
@@ -81,6 +110,7 @@ def min_x(node_list):
     return leftmost_node
 
 
+# take the list of vector points in the skeleton and turn it into a set of continuous paths
 def get_path_set(vector_set):
     all_paths = []
     vector_set_copy = vector_set.copy()
@@ -91,7 +121,7 @@ def get_path_set(vector_set):
         next_point = closest_point(curr_point, vector_set_copy)
         if math.dist(curr_point, next_point) < 2:
             curr_path.append(next_point)
-        else:
+        else:  # the next closest point is too far away - split into a second path
             all_paths.append(curr_path)
             curr_path = [next_point]
         vector_set_copy.remove(next_point)
@@ -101,7 +131,7 @@ def get_path_set(vector_set):
 
 
 def closest_point(curr_node, nodes):
-    closest = nodes[0]
+    closest = nodes[0]  # curr_node is not in nodes - hence just start with index 0
     closest_dist = math.dist(closest, curr_node)
 
     for node in nodes[1:]:
