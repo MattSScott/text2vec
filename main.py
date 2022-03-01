@@ -2,6 +2,7 @@ import math
 import os
 import re
 
+import numpy as np
 from skimage.io import imread
 import matplotlib.pyplot as plt
 from skimage.transform import resize
@@ -10,7 +11,7 @@ from skimage.filters import threshold_otsu
 
 
 # we expect a list of images with name = letter to generate a dataset from
-def gen_dataset(dataset_location):
+def gen_dataset(dataset_location, resolution):
     dataset = os.fsencode(dataset_location)
     for file in os.listdir(dataset):
         filename = os.fsdecode(file)
@@ -18,30 +19,24 @@ def gen_dataset(dataset_location):
             letter = get_letter(filename)
             full_path = dataset_location + '/' + filename
             img = imread(full_path, as_gray=True)
-            resized_img = resize(img, (50, 50))
+            resized_img = resize(img, (resolution, resolution))
             skeleton = get_skeleton(resized_img)
             vector_set = get_vector_set(skeleton)
             path_set = get_path_set(vector_set)
-            # show_path(path_set, skeleton)
+            # plt.imshow(skeleton)
+            # show_path(path_set)
             write_vec_file(letter, path_set, dataset_location)
 
 
 def write_vec_file(letter, paths, location):
     db_num = re.search('\d+$', location).group(0)
-    output_path = f"datasets/vectorised{db_num}/{letter}.txt"
+    output_path = f"datasets/vectorised{db_num}/{letter}.npz"
     file = open(output_path, "w")
-    for path in paths:
-        for pt in path:
-            for coord in pt:
-                file.write(str(coord) + " ")
-            file.write('\t\t')
-        file.write('\n')
+    np.savez(output_path, *paths)
     file.close()
 
 
-def show_path(path_set, skeleton):
-    plt.figure()
-    plt.imshow(skeleton)
+def show_path(path_set):
     for path in path_set:  # illustrate path taken
         for i in range(len(path) - 1):
             pt1 = path[i]
@@ -49,7 +44,6 @@ def show_path(path_set, skeleton):
             x = [pt1[0], pt2[0]]
             y = [pt1[1], pt2[1]]
             plt.plot(x, y, marker='')
-    plt.show()
 
 
 def get_letter(file):
@@ -65,7 +59,7 @@ def get_skeleton(image):
     return skeleton
 
 
-# skeletonization returns a boolean mask - filter these points to extract the x-y coordinates
+# get_skeleton returns a boolean mask - filter these points to extract the x-y coordinates
 def get_vector_set(skel):
     vec_set = []
     for y in range(len(skel)):
@@ -122,11 +116,12 @@ def get_path_set(vector_set):
         if math.dist(curr_point, next_point) < 2:
             curr_path.append(next_point)
         else:  # the next closest point is too far away - split into a second path
-            all_paths.append(curr_path)
-            curr_path = [next_point]
+            joining_point = closest_point(next_point, curr_path)  # join using the closest point in the existing path
+            all_paths.append(np.array(curr_path))
+            curr_path = [joining_point, next_point]
         vector_set_copy.remove(next_point)
         curr_point = next_point
-    all_paths.append(curr_path)
+    all_paths.append(np.array(curr_path))
     return all_paths
 
 
@@ -143,6 +138,42 @@ def closest_point(curr_node, nodes):
     return closest
 
 
+def load_dataset(db_loc):
+    return list(np.load(db_loc).values())
+
+
+def gen_transform(sx, sy, tx, ty):
+    return np.array([[sx, 0, 0], [0, sy, 0], [tx, ty, 1]])
+
+
+def apply_transform(paths, tform):
+    new_paths = []
+    for path in paths:
+        augmented = np.c_[path, np.ones(len(path))]
+        new_paths.append(np.matmul(augmented, tform)[:, :2])
+    return new_paths
+
+
+def process_string(str_in, writing_style, pt_size, resolution):
+    plt.figure()
+    plt.gca().invert_yaxis()
+    x_scale = pt_size / resolution
+    y_scale = x_scale
+    for i in range(len(str_in)):
+        letter = str_in[i]
+        db_loc = f"datasets/vectorised{writing_style}/{letter}.npz"
+        letter_path = load_dataset(db_loc)
+        x_shift = i * pt_size
+        y_shift = 0
+        tform = gen_transform(x_scale, y_scale, x_shift, y_shift)
+        new_letter_path = apply_transform(letter_path, tform)
+        show_path(new_letter_path)
+    plt.show()
+
+
 if __name__ == '__main__':
+    rez = 200  # keep global for string processing
     db_loc = "datasets/database1"
-    gen_dataset(db_loc)
+    gen_dataset(db_loc, resolution=rez)  # set resolution higher for cleaner edges at cost of speed
+    string_input = "mcm"
+    process_string(string_input, writing_style=1, pt_size=5, resolution=rez)
